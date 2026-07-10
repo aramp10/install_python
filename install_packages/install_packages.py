@@ -5,7 +5,7 @@ Install (or download for air-gapped transfer) Python packages from a requirement
 Three modes, selected by the first argument:
 
     python3 install_packages.py online   [requirements.txt]   # install from PyPI (default)
-    python3 install_packages.py download [requirements.txt]   # download wheels/sdists -> DIST
+    python3 install_packages.py download [requirements.txt]   # download wheels -> DIST
     python3 install_packages.py offline  [requirements.txt]   # install from local DIST, no network
 
 If the first argument is not one of those mode keywords it is treated as the
@@ -16,8 +16,9 @@ requirements file and the mode defaults to "online", so the shorter form still w
 The requirements file defaults to requirements.txt (produced by list_packages.py).
 
 Air-gap workflow:
-  1. On an internet-connected machine with the SAME Python version as the target
-     (module-loaded, e.g. `module load python3/3.13.8`):
+  1. On ANY internet-connected machine (its own OS/Python version don't matter -
+     download always resolves wheels for the TARGET_* below, not for whatever is
+     running the download):
        python3 install_packages.py download requirements.txt
      -> resolves and downloads the full dependency closure into DIST_DIR.
   2. Copy DIST_DIR to the air-gapped target.
@@ -26,18 +27,21 @@ Air-gap workflow:
      -> installs from DIST_DIR with --no-index --find-links, no network access.
 
 Environment knobs:
-  DIST_DIR                 Download/install folder (default: ./DIST)
-  PYPI_REPO                PyPI index URL for online/download modes (default: PyPI itself)
-  TARGET_PYTHON_VERSION     Optional --python-version for download mode (e.g. 3.13)
-  TARGET_PLATFORM           Optional --platform for download mode (e.g. linux_x86_64)
-  TARGET_ABI                Optional --abi for download mode (e.g. cp313)
+  DIST_DIR                Download/install folder (default: ./DIST)
+  PYPI_REPO               PyPI index URL for online/download modes (default: PyPI itself)
+  TARGET_PYTHON_VERSION   --python-version for download mode (default: 3.13)
+  TARGET_IMPLEMENTATION   --implementation for download mode (default: cp = CPython)
+  TARGET_ABI              --abi for download mode (default: cp313)
+  TARGET_PLATFORMS        comma-separated --platform values for download mode
+                          (default: manylinux2014_x86_64,manylinux_2_17_x86_64,
+                          manylinux_2_28_x86_64,linux_x86_64 - see ../plan.md for why
+                          this list, not just one tag)
+  ALLOW_SDIST             set to 1 to also allow source distributions, not just wheels
+                          (the target needs a compatible compiler - tiCrypt has gcc)
 
-  The TARGET_* knobs are only needed if the download machine's Python
-  version/OS/arch doesn't match the target closely enough for pip's default
-  (same-machine) resolution to produce compatible wheels. Setting any of them
-  forces --only-binary=:all:, since cross-platform resolution can't build
-  from source. See ../plan.md for when tiCrypt vs. the download machine did
-  or didn't need these.
+  The TARGET_* defaults describe tiCrypt (RCS-maintained - update them if tiCrypt's
+  Python module changes). download always resolves against them regardless of what
+  machine/Python version is actually running it.
 """
 import os
 import subprocess
@@ -45,6 +49,13 @@ import sys
 from pathlib import Path
 
 MODES = {"online", "download", "offline"}
+
+DEFAULT_TARGET_PYTHON_VERSION = "3.13"
+DEFAULT_TARGET_IMPLEMENTATION = "cp"
+DEFAULT_TARGET_ABI = "cp313"
+DEFAULT_TARGET_PLATFORMS = (
+    "manylinux2014_x86_64,manylinux_2_17_x86_64,manylinux_2_28_x86_64,linux_x86_64"
+)
 
 
 def main():
@@ -63,25 +74,22 @@ def main():
 
     elif mode == "download":
         dist_dir.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            sys.executable, "-m", "pip", "download",
-            "--dest", str(dist_dir),
-            "-r", str(req_file),
-        ]
+        cmd = [sys.executable, "-m", "pip", "download", "--dest", str(dist_dir)]
+
+        if not os.environ.get("ALLOW_SDIST"):
+            cmd += ["--only-binary=:all:"]
+
+        py_ver = os.environ.get("TARGET_PYTHON_VERSION", DEFAULT_TARGET_PYTHON_VERSION)
+        impl = os.environ.get("TARGET_IMPLEMENTATION", DEFAULT_TARGET_IMPLEMENTATION)
+        abi = os.environ.get("TARGET_ABI", DEFAULT_TARGET_ABI)
+        platforms = os.environ.get("TARGET_PLATFORMS", DEFAULT_TARGET_PLATFORMS)
+        cmd += ["--python-version", py_ver, "--implementation", impl, "--abi", abi]
+        for plat in platforms.split(","):
+            cmd += ["--platform", plat.strip()]
+
         if repo:
             cmd += ["--index-url", repo]
-
-        py_ver = os.environ.get("TARGET_PYTHON_VERSION")
-        platform = os.environ.get("TARGET_PLATFORM")
-        abi = os.environ.get("TARGET_ABI")
-        if py_ver or platform or abi:
-            cmd += ["--only-binary=:all:"]
-            if py_ver:
-                cmd += ["--python-version", py_ver]
-            if platform:
-                cmd += ["--platform", platform]
-            if abi:
-                cmd += ["--abi", abi]
+        cmd += ["-r", str(req_file)]
 
     elif mode == "offline":
         cmd = [

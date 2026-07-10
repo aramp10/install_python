@@ -149,19 +149,50 @@ Findings:
 
 ### Conclusions
 
-1. **Python version** — use the `python3/3.13.8` module on both sides. Exact
-   version match (`cpython-313`) removes any need for `--python-version`/`--abi`
-   flags on `pip download`.
+1. **Python version** — tiCrypt uses the `python3/3.13.8` module.
 2. **Conda or pip** — pure pip/module system on both machines. No `conda-pack`
    workflow needed.
-3. **Same or different platform** — same CPU arch (x86_64) and same CPython
-   build, but different OS major version: `scc-yd2` is el8 (glibc 2.28),
-   tiCrypt is el9 (glibc 2.34). This is not a blocker: manylinux wheels are
-   glibc-forward-compatible, so wheels resolved as compatible with el8's older
-   glibc will also load on el9's newer glibc. `pip download` can run on
-   `scc-yd2` with `python3/3.13.8` loaded and **no manual `--platform`/`--abi`
-   flags** — but since SCC nodes vary, re-verify OS/arch if the download step
-   ends up running on a different node.
+3. **Same or different platform** — `scc-yd2` (el8, glibc 2.28) and tiCrypt
+   (el9, glibc 2.34) happen to be close enough that no cross-platform flags
+   would strictly be *required* if the download always ran on a matching SCC
+   node. See the revised decision below — that assumption was dropped.
 4. **Compiler on tiCrypt** — yes, GCC 11.5.0, so source builds work as a
-   fallback if a package has no wheel. (`scc-yd2` has the older GCC 8.5.0, but
-   that only affects the download side if source dists get built there too.)
+   fallback if a package has no wheel.
+
+### Revised decision (2026-07-10, after team meeting)
+
+The download machine is **not assumed to be any particular machine** — it could
+be a personal laptop (any OS/arch), not necessarily an SCC node. This rules out
+the "load the same `python3/3.13.8` module on both sides" shortcut above, since
+there's no guarantee the download machine can load that module at all.
+
+Instead, `pip download` always resolves wheels for **tiCrypt's target**
+explicitly, via `--python-version`, `--implementation`, `--abi`, and
+`--platform` flags — regardless of what machine or Python version is actually
+running the download. This is the original "Key complication" approach from
+the top of this file, now the primary path rather than a fallback.
+
+Target constants (hardcoded in `ticrypt/ticrypt_packages.py`, derived from the
+environment discovery above):
+
+| Flag | Value | Why |
+|---|---|---|
+| `--python-version` | `3.13` | tiCrypt's `python3/3.13.8` module |
+| `--implementation` | `cp` | CPython |
+| `--abi` | `cp313` | matches Python 3.13's `cache_tag` |
+| `--platform` (repeated) | `manylinux2014_x86_64`, `manylinux_2_17_x86_64`, `manylinux_2_28_x86_64`, `linux_x86_64` | tiCrypt is x86_64 with glibc 2.34 (AlmaLinux 9.7); listing older manylinux baselines too maximizes wheel coverage, since manylinux tags are glibc-forward-compatible and many wheels only publish older tags |
+
+`--only-binary=:all:` is the default (wheels only, since cross-platform
+resolution can't build from source for a machine other than the one running
+pip); an `--allow-sdist` opt-in exists for packages without a matching wheel,
+relying on tiCrypt's own GCC 11.5.0 to build them during the offline install
+step.
+
+Verified end-to-end on 2026-07-10: `ticrypt_packages.py download pandas
+matplotlib` from a machine running Python 3.13/AlmaLinux 8, targeting the
+constants above, correctly resolved and fetched pure-wheel builds (including
+transitive deps) for `cp313`/`manylinux_2_28_x86_64` — several wheels (pandas,
+numpy, pillow, contourpy) only matched because `manylinux_2_28_x86_64` was in
+the platform list, confirming it's load-bearing, not just precautionary. The
+downloaded folder installed offline via `--no-index --find-links` into a
+fresh venv and imported successfully.
