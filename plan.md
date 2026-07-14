@@ -196,3 +196,29 @@ numpy, pillow, contourpy) only matched because `manylinux_2_28_x86_64` was in
 the platform list, confirming it's load-bearing, not just precautionary. The
 downloaded folder installed offline via `--no-index --find-links` into a
 fresh venv and imported successfully.
+
+### Choosing a test package (2026-07-14)
+
+When testing this workflow end-to-end, pick a package that is **not already
+installed** in tiCrypt's `python3/3.13.8` module — otherwise `pip` reports
+"Requirement already satisfied" and skips installing from the downloaded
+wheels entirely, which doesn't actually exercise the offline-install path.
+
+Checked against tiCrypt's `python3/3.13.8` module on 2026-07-14:
+
+| Package | Status |
+|---|---|
+| `numpy`, `pandas`, `requests` | already installed |
+| `biopython` (`Bio`) | already installed (1.85) |
+| `HTSeq` | already installed (2.0.9) |
+| `pysam`, `pybedtools` | present but broken — `ImportError: libffi.so.6: cannot open shared object file` (missing system library, unrelated to this workflow; avoid as test candidates since a fresh install would hit the same failure) |
+| `scikit-bio` (`skbio`), `cyvcf2`, `pyfaidx`, `anndata` | confirmed absent — **good test candidates** |
+
+`pyfaidx` is a good default choice: it's a real bioinformatics package (FASTA
+indexing), pure Python with no compiled C extensions (so no risk of hitting
+the `libffi.so.6` issue above), and lightweight.
+
+Verified end-to-end on 2026-07-14: `ticrypt_packages.py download pyfaidx` on
+BU SCC, transferred to tiCrypt, and `ticrypt_packages.py install` run inside
+an active `virtualenv` — actually installed `pyfaidx` + `packaging` (not
+"already satisfied") and imported successfully (v0.9.0.4).
