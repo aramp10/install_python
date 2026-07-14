@@ -33,12 +33,22 @@ method.
 
 ## Step 3 — Inside tiCrypt, install
 
+Create and activate a virtual environment first, then install into it — this keeps
+packages isolated in your own venv rather than landing in your home directory's user
+site-packages:
+
 ```bash
 module load python3/3.13.8
+virtualenv ~/venvs/my_venv
+source ~/venvs/my_venv/bin/activate
 python3 ticrypt_packages/ticrypt_packages.py install
 ```
 
 Packages install with `pip install --no-index --find-links=...`, no network access.
+
+You'll need to reload the module and reactivate the venv (`source
+~/venvs/my_venv/bin/activate`) at the start of each new tiCrypt session before using
+these packages again.
 
 Before installing, `install` checks that this system's Python version/platform match
 what the folder was downloaded for. If they don't match it **stops** and explains the
