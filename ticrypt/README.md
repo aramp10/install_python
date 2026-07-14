@@ -13,7 +13,7 @@ the downloaded wheels work on tiCrypt without extra platform flags (see
 
 ```bash
 module load python3/3.13.8
-python3 ticrypt_packages.py download requests pandas numpy
+python3 ticrypt_packages.py download pyfaidx
 ```
 
 This creates a folder named `ticrypt_packages/` containing:
@@ -54,6 +54,18 @@ Before installing, `install` checks that this system's Python version/platform m
 what the folder was downloaded for. If they don't match it **stops** and explains the
 mismatch (unless you pass `--force`) — re-run `download` on a machine matching
 tiCrypt's Python module and copy the folder over again.
+
+## Step 4 — Verify
+
+Confirm the package actually installed and is importable:
+
+```bash
+python3 -c "import pyfaidx; print(pyfaidx.__version__)"
+```
+
+If a package was already present in tiCrypt's Python module, `install` will print
+"Requirement already satisfied" instead of actually installing from the downloaded
+wheels — this check confirms which case you're in.
 
 ## Options
 
