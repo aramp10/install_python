@@ -29,7 +29,7 @@ and tells you which module to load.
 ## Step 2 — Copy the folder into tiCrypt
 
 Move the whole `ticrypt_packages/` folder into tiCrypt using your normal transfer
-method.
+method. Then delete the copy on your local computer.
 
 ## Step 3 — Inside tiCrypt, install
 
